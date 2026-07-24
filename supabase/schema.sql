@@ -16,3 +16,10 @@ create table if not exists sessions (
 );
 
 create index if not exists sessions_session_id_idx on sessions (session_id);
+
+-- The app only ever writes to this table via the Supabase service role key
+-- (server-side, see lib/supabase.ts) — which always bypasses RLS — and
+-- never exposes the anon/public key to the client. Enabling RLS with no
+-- policies blocks anon/authenticated access entirely while leaving the
+-- service role unaffected.
+alter table sessions enable row level security;
