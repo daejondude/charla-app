@@ -9,13 +9,16 @@ const LEVEL_GUIDANCE: Record<SpanishLevel, string> = {
     "Speak naturally, as with a fluent peer: full range of tenses including subjunctive, idioms, colloquialisms, and nuanced vocabulary. Don't simplify for the learner.",
 };
 
+const ENGLISH_CORRECTION_GUIDANCE =
+  'The correction itself must be written in plain English, never in Spanish — the learner needs the explanation in a language they fully understand. Put the English correction FIRST, as its own sentence, before anything else in the reply; only after that do you switch to Spanish for your reaction and follow-up question. Follow this exact pattern. If the learner says "Yo ir al mercado ayer", a correct reply is exactly: "You\'d say \'fui\', not \'ir\', to talk about the past. ¡Qué bien! ¿Qué compraste?" Notice the first sentence is 100% English and the rest is 100% Spanish — never blend the two in one sentence, and never write the correction in Spanish.';
+
+const SPANISH_CORRECTION_GUIDANCE =
+  'Give the correction in Spanish: name what was wrong and give the correct form in one short clause (for example, "Se dice \'fui\', no \'iba\'.").';
+
 const CORRECTION_GUIDANCE: Record<SpanishLevel, string> = {
-  Beginner:
-    'The correction itself must be written in plain English, never in Spanish — a Beginner cannot read a Spanish grammar note yet. Put the English correction FIRST, as its own sentence, before anything else in the reply; only after that do you switch to Spanish for your reaction and follow-up question. Follow this exact pattern. If the learner says "Yo ir al mercado ayer", a correct reply is exactly: "You\'d say \'fui\', not \'ir\', to talk about the past. ¡Qué bien! ¿Qué compraste?" Notice the first sentence is 100% English and the rest is 100% Spanish — never blend the two in one sentence, and never write the correction in Spanish.',
-  Intermediate:
-    'Give the correction in Spanish: name what was wrong and give the correct form in one short clause (for example, "Se dice \'fui\', no \'iba\'.").',
-  Advanced:
-    'Give the correction in Spanish: name what was wrong and give the correct form in one short clause (for example, "Se dice \'fui\', no \'iba\'.").',
+  Beginner: ENGLISH_CORRECTION_GUIDANCE,
+  Intermediate: ENGLISH_CORRECTION_GUIDANCE,
+  Advanced: SPANISH_CORRECTION_GUIDANCE,
 };
 
 export function buildSofiaSystemPrompt(level: SpanishLevel): string {
