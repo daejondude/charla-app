@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSofiaSystemPrompt, type SpanishLevel } from "@/lib/sofia-prompt";
+import { logSessionEntry } from "@/lib/supabase";
 
 const VALID_LEVELS: SpanishLevel[] = ["Beginner", "Intermediate", "Advanced"];
 
@@ -29,9 +30,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { history, level } = (body ?? {}) as {
+  const { history, level, sessionId } = (body ?? {}) as {
     history?: unknown;
     level?: unknown;
+    sessionId?: unknown;
   };
 
   if (!Array.isArray(history) || !history.every(isConversationTurn)) {
@@ -87,6 +89,15 @@ export async function POST(request: NextRequest) {
         { error: "Claude returned an empty response." },
         { status: 502 }
       );
+    }
+
+    if (typeof sessionId === "string" && sessionId) {
+      await logSessionEntry({
+        sessionId,
+        level: level as SpanishLevel,
+        role: "assistant",
+        charCount: reply.length,
+      });
     }
 
     return NextResponse.json({ reply });

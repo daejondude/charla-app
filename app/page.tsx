@@ -54,6 +54,13 @@ export default function Home() {
   // A ref is mutated in place and always reflects the latest history
   // regardless of which render's closure is reading it.
   const messagesRef = useRef<ChatMessage[]>([]);
+  // Random ID generated once per page load, sent with every /api/converse
+  // and /api/transcribe request so their Supabase logs can be grouped by
+  // conversation.
+  const sessionIdRef = useRef<string>("");
+  if (!sessionIdRef.current && typeof window !== "undefined") {
+    sessionIdRef.current = crypto.randomUUID();
+  }
 
   function appendMessage(message: ChatMessage): ChatMessage[] {
     const updated = [...messagesRef.current, message];
@@ -170,6 +177,8 @@ export default function Home() {
     try {
       const form = new FormData();
       form.append("audio", blob, "recording.webm");
+      form.append("level", level ?? "");
+      form.append("sessionId", sessionIdRef.current);
       const res = await fetch("/api/transcribe", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Transcription failed.");
@@ -202,6 +211,7 @@ export default function Home() {
         body: JSON.stringify({
           history: history.map(({ role, content }) => ({ role, content })),
           level,
+          sessionId: sessionIdRef.current,
         }),
       });
       const data = await res.json();

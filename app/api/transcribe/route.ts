@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SpanishLevel } from "@/lib/sofia-prompt";
+import { logSessionEntry } from "@/lib/supabase";
 
 const OPENAI_TRANSCRIPTIONS_URL = "https://api.openai.com/v1/audio/transcriptions";
+const VALID_LEVELS: SpanishLevel[] = ["Beginner", "Intermediate", "Advanced"];
 
 export async function POST(request: NextRequest) {
   let incomingForm: FormData;
@@ -27,6 +30,16 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  // Optional — only used for Supabase logging, never for the transcription
+  // itself, so a missing/invalid value doesn't block the core feature.
+  const levelField = incomingForm.get("level");
+  const sessionIdField = incomingForm.get("sessionId");
+  const level =
+    typeof levelField === "string" && VALID_LEVELS.includes(levelField as SpanishLevel)
+      ? (levelField as SpanishLevel)
+      : null;
+  const sessionId = typeof sessionIdField === "string" && sessionIdField ? sessionIdField : null;
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -68,6 +81,15 @@ export async function POST(request: NextRequest) {
         { error: "OpenAI response did not include transcribed text." },
         { status: 502 }
       );
+    }
+
+    if (sessionId && level) {
+      await logSessionEntry({
+        sessionId,
+        level,
+        role: "user",
+        charCount: data.text.length,
+      });
     }
 
     return NextResponse.json({ text: data.text });
