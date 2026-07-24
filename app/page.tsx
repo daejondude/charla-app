@@ -3,30 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { SpanishLevel } from "@/lib/sofia-prompt";
 import {
-  CONVERSATION_TOPICS,
   buildKickoffInstruction,
-  pickRandomTopic,
   type ConversationTopic,
 } from "@/lib/conversation-topics";
-
-type Status = "idle" | "recording" | "transcribing" | "thinking" | "speaking";
-
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-  /** Hidden stage-direction turns (topic kickoffs) are sent to the API but never rendered. */
-  hidden?: boolean;
-}
-
-const LEVELS: SpanishLevel[] = ["Beginner", "Intermediate", "Advanced"];
-
-const STATUS_TEXT: Record<Status, string> = {
-  idle: "Tap the mic and say something in Spanish.",
-  recording: "Listening... tap again to stop.",
-  transcribing: "Transcribing your voice...",
-  thinking: "Sofía is thinking...",
-  speaking: "Sofía is speaking...",
-};
+import type { ChatMessage, Status } from "@/lib/chat-types";
+import { LevelSelectScreen } from "@/components/LevelSelectScreen";
+import { TopicSelectScreen } from "@/components/TopicSelectScreen";
+import { ChatScreen } from "@/components/ChatScreen";
 
 const RECORDER_MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
@@ -257,67 +240,16 @@ export default function Home() {
   }
 
   if (!level) {
-    return (
-      <div className="flex flex-1 items-center justify-center bg-zinc-50 px-6 dark:bg-black">
-        <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Charla
-          </h1>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Practice speaking Spanish with Sofía. Pick your level to start.
-          </p>
-          <div className="mt-6 flex flex-col gap-3">
-            {LEVELS.map((option) => (
-              <button
-                key={option}
-                onClick={() => setLevel(option)}
-                className="rounded-xl border border-zinc-200 px-4 py-3 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-zinc-900 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:border-zinc-50 dark:hover:bg-zinc-900"
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <LevelSelectScreen onSelect={setLevel} />;
   }
 
   if (!topic) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-zinc-50 px-6 py-10 dark:bg-black">
-        <div className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <button
-            onClick={resetToLevelSelect}
-            className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-50"
-          >
-            ← Change level
-          </button>
-          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            What should we talk about?
-          </h1>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Sofía will open the conversation. Pick a topic, or let her surprise you.
-          </p>
-          <button
-            onClick={() => void startConversation(pickRandomTopic())}
-            className="mt-5 w-full rounded-xl bg-zinc-900 px-4 py-3 text-left text-sm font-semibold text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            🎲 Sorpréndeme (surprise me)
-          </button>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {CONVERSATION_TOPICS.map((option) => (
-              <button
-                key={option.id}
-                onClick={() => void startConversation(option)}
-                className="rounded-xl border border-zinc-200 px-3 py-3 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-zinc-900 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:border-zinc-50 dark:hover:bg-zinc-900"
-              >
-                <span className="mr-1.5">{option.emoji}</span>
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <TopicSelectScreen
+        level={level}
+        onBack={resetToLevelSelect}
+        onSelect={(selected) => void startConversation(selected)}
+      />
     );
   }
 
@@ -325,100 +257,17 @@ export default function Home() {
   const visibleMessages = messages.filter((message) => !message.hidden);
 
   return (
-    <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-black">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
-        <div>
-          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            Charla con Sofía
-          </p>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            {level} · {topic.emoji} {topic.label}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={resetToTopicSelect}
-            className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-50"
-          >
-            New topic
-          </button>
-          <button
-            onClick={resetToLevelSelect}
-            className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-50"
-          >
-            Change level
-          </button>
-        </div>
-      </header>
-
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {visibleMessages.length === 0 ? (
-          <p className="mt-10 text-center text-sm text-zinc-400 dark:text-zinc-600">
-            Sofía is getting the conversation started...
-          </p>
-        ) : (
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-            {visibleMessages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm leading-relaxed ${
-                    message.role === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
-                  }`}
-                >
-                  {message.content}
-                </div>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-zinc-200 bg-white px-4 py-5 dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-3">
-          {error && (
-            <p className="text-center text-xs font-medium text-red-600 dark:text-red-400">
-              {error}
-            </p>
-          )}
-          <p className="text-center text-xs text-zinc-500 dark:text-zinc-400">
-            {STATUS_TEXT[status]}
-          </p>
-          <button
-            onClick={handleRecordButtonClick}
-            disabled={isRecordButtonDisabled}
-            aria-label={status === "recording" ? "Stop recording" : "Start recording"}
-            className={`flex h-16 w-16 items-center justify-center rounded-full transition-colors ${
-              status === "recording"
-                ? "animate-pulse bg-red-600 hover:bg-red-700"
-                : "bg-zinc-900 hover:bg-zinc-700 dark:bg-zinc-50 dark:hover:bg-zinc-200"
-            } disabled:cursor-not-allowed disabled:opacity-40`}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`h-7 w-7 ${
-                status === "recording" ? "text-white" : "text-white dark:text-zinc-900"
-              }`}
-            >
-              <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-              <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-              <line x1="12" y1="18" x2="12" y2="22" />
-              <line x1="8" y1="22" x2="16" y2="22" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    <ChatScreen
+      level={level}
+      topic={topic}
+      messages={visibleMessages}
+      status={status}
+      error={error}
+      isRecordButtonDisabled={isRecordButtonDisabled}
+      onRecordButtonClick={handleRecordButtonClick}
+      onNewTopic={resetToTopicSelect}
+      onChangeLevel={resetToLevelSelect}
+      messagesEndRef={messagesEndRef}
+    />
   );
 }
