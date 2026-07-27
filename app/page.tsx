@@ -154,7 +154,20 @@ export default function Home() {
 
   function handleSendText(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || status !== "idle") return;
+    if (!trimmed) return;
+    // Blocked only while audio is actually being captured/processed for a
+    // voice turn — typing is allowed while idle, paused, or while Sofia is
+    // thinking/speaking, in which case this interrupts her: bumping the
+    // token invalidates whatever's in flight (a pending converse reply
+    // won't be appended or spoken), and canceling speech stops her mid-
+    // sentence if she's talking.
+    if (status === "recording" || status === "transcribing") return;
+    sessionTokenRef.current += 1;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setError(null);
+
     const token = sessionTokenRef.current;
     const updatedHistory = appendMessage({ role: "user", content: trimmed });
     // Typed turns don't auto-arm the mic afterward — the user chose to type,

@@ -49,7 +49,12 @@ export function ChatScreen({
   const turnCount = messages.filter((message) => message.role === "user").length;
   const [celebration, setCelebration] = useState<string | null>(null);
   const [textValue, setTextValue] = useState("");
-  const canType = status === "idle";
+  // Typing is blocked only while audio is actually being captured/processed
+  // for a voice turn (recording/transcribing) — allowed while idle, and
+  // also while Sofia is "thinking" or "speaking" so the user can interrupt
+  // her instead of waiting. onSendText handles canceling whatever's in
+  // flight when that happens.
+  const canType = status !== "recording" && status !== "transcribing";
 
   useEffect(() => {
     if (turnCount > 0 && turnCount % 5 === 0) {
@@ -179,7 +184,7 @@ export function ChatScreen({
               value={textValue}
               onChange={(event) => setTextValue(event.target.value)}
               disabled={!canType}
-              placeholder="O escribe tu mensaje en español..."
+              placeholder="Or type your message in Spanish..."
               aria-label="Type a message in Spanish"
               lang="es"
               className="flex-1 rounded-full border border-border-soft bg-background px-4 py-2 text-sm text-foreground placeholder:text-ink-soft/60 focus:border-brand focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
