@@ -24,6 +24,7 @@ interface ChatScreenProps {
   error: string | null;
   isRecordButtonDisabled: boolean;
   onRecordButtonClick: () => void;
+  onSendText: (text: string) => void;
   onTogglePause: () => void;
   onNewTopic: () => void;
   onChangeLevel: () => void;
@@ -38,6 +39,7 @@ export function ChatScreen({
   error,
   isRecordButtonDisabled,
   onRecordButtonClick,
+  onSendText,
   onTogglePause,
   onNewTopic,
   onChangeLevel,
@@ -46,6 +48,8 @@ export function ChatScreen({
   const isPaused = status === "paused";
   const turnCount = messages.filter((message) => message.role === "user").length;
   const [celebration, setCelebration] = useState<string | null>(null);
+  const [textValue, setTextValue] = useState("");
+  const canType = status === "idle";
 
   useEffect(() => {
     if (turnCount > 0 && turnCount % 5 === 0) {
@@ -107,7 +111,11 @@ export function ChatScreen({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4"
+        aria-live="polite"
+        aria-atomic="false"
+      >
         {messages.length === 0 ? (
           <p className="mt-10 text-center text-sm text-ink-soft">
             Sofía is getting the conversation started...
@@ -123,6 +131,7 @@ export function ChatScreen({
               >
                 {message.role === "assistant" && <SofiaAvatar size="sm" />}
                 <div
+                  lang="es"
                   className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
                     message.role === "user"
                       ? "rounded-br-md bg-gradient-to-br from-brand to-brand-dark text-white"
@@ -149,12 +158,46 @@ export function ChatScreen({
       <div className="border-t border-border-soft bg-card px-4 py-5">
         <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-3">
           {error && (
-            <p className="text-center text-xs font-medium text-red-600 dark:text-red-400">
+            <p
+              role="alert"
+              className="text-center text-xs font-medium text-red-600 dark:text-red-400"
+            >
               {error}
             </p>
           )}
-          <p className="flex items-center gap-1.5 text-center text-xs text-ink-soft">
-            <span>{STATUS_META[status].icon}</span>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!textValue.trim() || !canType) return;
+              onSendText(textValue);
+              setTextValue("");
+            }}
+            className="flex w-full items-center gap-2"
+          >
+            <input
+              type="text"
+              value={textValue}
+              onChange={(event) => setTextValue(event.target.value)}
+              disabled={!canType}
+              placeholder="O escribe tu mensaje en español..."
+              aria-label="Type a message in Spanish"
+              lang="es"
+              className="flex-1 rounded-full border border-border-soft bg-background px-4 py-2 text-sm text-foreground placeholder:text-ink-soft/60 focus:border-brand focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!canType || !textValue.trim()}
+              aria-label="Send message"
+              className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Send
+            </button>
+          </form>
+          <p
+            aria-live="polite"
+            className="flex items-center gap-1.5 text-center text-xs text-ink-soft"
+          >
+            <span aria-hidden="true">{STATUS_META[status].icon}</span>
             {STATUS_META[status].label}
           </p>
           <button

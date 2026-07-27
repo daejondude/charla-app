@@ -103,14 +103,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ reply });
   } catch (error) {
     if (error instanceof Anthropic.APIError) {
-      return NextResponse.json(
-        { error: `Anthropic API error: ${error.message}` },
-        { status: error.status ?? 502 }
-      );
+      // Log the full upstream detail server-side only — it can contain raw
+      // JSON/internal detail that shouldn't be shown to end users.
+      console.error("Anthropic API error:", error.status, error.message);
+      const status = error.status ?? 502;
+      const userMessage =
+        status === 429
+          ? "Sofía is getting a lot of requests right now — please wait a moment and try again."
+          : "Sofía couldn't respond right now. Please try again in a moment.";
+      return NextResponse.json({ error: userMessage }, { status });
     }
     console.error("Unexpected error calling Anthropic API:", error);
     return NextResponse.json(
-      { error: "Unexpected server error." },
+      { error: "Unexpected server error. Please try again." },
       { status: 500 }
     );
   }

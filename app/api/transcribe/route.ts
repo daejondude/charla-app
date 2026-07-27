@@ -68,10 +68,14 @@ export async function POST(request: NextRequest) {
 
     if (!openaiResponse.ok) {
       const errorBody = await openaiResponse.text();
-      return NextResponse.json(
-        { error: `OpenAI API error: ${errorBody}` },
-        { status: openaiResponse.status }
-      );
+      // Log the full upstream detail server-side only — it can be a large
+      // JSON/HTML blob that shouldn't be shown to end users.
+      console.error("OpenAI API error:", openaiResponse.status, errorBody);
+      const userMessage =
+        openaiResponse.status === 429
+          ? "Transcription service is busy right now — please wait a moment and try again."
+          : "Couldn't transcribe your audio right now. Please try again.";
+      return NextResponse.json({ error: userMessage }, { status: openaiResponse.status });
     }
 
     const data = (await openaiResponse.json()) as { text?: string };
@@ -96,7 +100,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Unexpected error calling OpenAI Whisper API:", error);
     return NextResponse.json(
-      { error: "Unexpected server error." },
+      { error: "Unexpected server error. Please try again." },
       { status: 500 }
     );
   }

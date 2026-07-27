@@ -149,7 +149,18 @@ export default function Home() {
       hidden: true,
     };
     const updatedHistory = appendMessage(kickoff);
-    await requestSofiaReply(updatedHistory, token);
+    await requestSofiaReply(updatedHistory, token, true);
+  }
+
+  function handleSendText(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || status !== "idle") return;
+    const token = sessionTokenRef.current;
+    const updatedHistory = appendMessage({ role: "user", content: trimmed });
+    // Typed turns don't auto-arm the mic afterward — the user chose to type,
+    // so re-opening the mic on their behalf would be surprising. Voice turns
+    // keep the hands-free loop going (see requestSofiaReply calls below).
+    void requestSofiaReply(updatedHistory, token, false);
   }
 
   async function startRecording() {
@@ -226,7 +237,7 @@ export default function Home() {
       }
 
       const updatedHistory = appendMessage({ role: "user", content: text });
-      await requestSofiaReply(updatedHistory, token);
+      await requestSofiaReply(updatedHistory, token, true);
     } catch (err) {
       if (sessionTokenRef.current !== token) return;
       console.error("Transcription error:", err);
@@ -237,7 +248,11 @@ export default function Home() {
     }
   }
 
-  async function requestSofiaReply(history: ChatMessage[], token: number) {
+  async function requestSofiaReply(
+    history: ChatMessage[],
+    token: number,
+    autoListenAfter: boolean
+  ) {
     if (!level) return;
     setStatus("thinking");
     try {
@@ -257,7 +272,7 @@ export default function Home() {
 
       const reply: string = data.reply;
       appendMessage({ role: "assistant", content: reply });
-      speak(reply, token);
+      speak(reply, token, autoListenAfter);
     } catch (err) {
       if (sessionTokenRef.current !== token) return;
       console.error("Converse error:", err);
@@ -268,8 +283,9 @@ export default function Home() {
     }
   }
 
-  function speak(text: string, token: number) {
+  function speak(text: string, token: number, autoListenAfter: boolean) {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setError("Voice playback isn't supported in this browser — showing text only.");
       setStatus("idle");
       return;
     }
@@ -284,7 +300,8 @@ export default function Home() {
     }
     utterance.onend = () => {
       if (sessionTokenRef.current !== token) return; // paused — don't re-arm the mic
-      void startRecording();
+      if (autoListenAfter) void startRecording();
+      else setStatus("idle");
     };
     utterance.onerror = () => {
       if (sessionTokenRef.current !== token) return;
@@ -320,6 +337,7 @@ export default function Home() {
       error={error}
       isRecordButtonDisabled={isRecordButtonDisabled}
       onRecordButtonClick={handleRecordButtonClick}
+      onSendText={handleSendText}
       onTogglePause={handleTogglePause}
       onNewTopic={resetToTopicSelect}
       onChangeLevel={resetToLevelSelect}
