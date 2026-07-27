@@ -215,7 +215,17 @@ export default function Home() {
     } catch (err) {
       if (sessionTokenRef.current !== token) return;
       console.error("Microphone access failed:", err);
-      setError("Couldn't access the microphone. Check your browser permissions.");
+      let message = "Couldn't access the microphone. Please try again.";
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        message = "This browser doesn't support microphone access — try typing instead, or use a different browser.";
+      } else if (err instanceof DOMException) {
+        if (err.name === "NotAllowedError") {
+          message = "Microphone access was denied. Check your browser's site permissions and try again.";
+        } else if (err.name === "NotFoundError") {
+          message = "No microphone was found. Check that one is connected, or try typing instead.";
+        }
+      }
+      setError(message);
       setStatus("idle");
     }
   }
@@ -254,9 +264,17 @@ export default function Home() {
     } catch (err) {
       if (sessionTokenRef.current !== token) return;
       console.error("Transcription error:", err);
-      setError(
-        err instanceof Error ? err.message : "Something went wrong transcribing your audio."
-      );
+      // fetch() throws a browser-native TypeError (with a cryptic message
+      // like "Failed to fetch") when the request never reached the server
+      // at all — offline, DNS failure, etc. Our own thrown Error carries the
+      // server's already-sanitized message, so only TypeError needs rewording.
+      const message =
+        err instanceof TypeError
+          ? "Network error — check your connection and try again."
+          : err instanceof Error
+            ? err.message
+            : "Something went wrong transcribing your audio.";
+      setError(message);
       setStatus("idle");
     }
   }
@@ -289,9 +307,13 @@ export default function Home() {
     } catch (err) {
       if (sessionTokenRef.current !== token) return;
       console.error("Converse error:", err);
-      setError(
-        err instanceof Error ? err.message : "Something went wrong reaching Sofía."
-      );
+      const message =
+        err instanceof TypeError
+          ? "Network error — check your connection and try again."
+          : err instanceof Error
+            ? err.message
+            : "Something went wrong reaching Sofía.";
+      setError(message);
       setStatus("idle");
     }
   }

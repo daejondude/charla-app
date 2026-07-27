@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SpanishLevel } from "@/lib/sofia-prompt";
 import { logSessionEntry } from "@/lib/supabase";
 
+// Give Vercel's function more room than our own request timeout below, so
+// our graceful error fires before the platform kills the function outright.
+export const maxDuration = 30;
+
 const OPENAI_TRANSCRIPTIONS_URL = "https://api.openai.com/v1/audio/transcriptions";
 const VALID_LEVELS: SpanishLevel[] = ["Beginner", "Intermediate", "Advanced"];
+const REQUEST_TIMEOUT_MS = 25_000;
+// Whisper's actual hard limit — reject oversized uploads before spending a
+// round trip on them.
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
   let incomingForm: FormData;
@@ -28,6 +36,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Uploaded audio file is empty." },
       { status: 400 }
+    );
+  }
+
+  if (audioFile.size > MAX_AUDIO_BYTES) {
+    return NextResponse.json(
+      { error: "That recording is too long. Please keep recordings under 25MB." },
+      { status: 413 }
     );
   }
 
@@ -57,6 +72,9 @@ export async function POST(request: NextRequest) {
   // in random languages.
   outgoingForm.append("language", "es");
 
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+
   try {
     const openaiResponse = await fetch(OPENAI_TRANSCRIPTIONS_URL, {
       method: "POST",
@@ -64,6 +82,7 @@ export async function POST(request: NextRequest) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: outgoingForm,
+      signal: timeoutController.signal,
     });
 
     if (!openaiResponse.ok) {
@@ -98,10 +117,19 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ text: data.text });
   } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      console.error("OpenAI transcription request timed out after", REQUEST_TIMEOUT_MS, "ms");
+      return NextResponse.json(
+        { error: "Transcription is taking too long. Please try again." },
+        { status: 504 }
+      );
+    }
     console.error("Unexpected error calling OpenAI Whisper API:", error);
     return NextResponse.json(
       { error: "Unexpected server error. Please try again." },
       { status: 500 }
     );
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

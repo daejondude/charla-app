@@ -3,6 +3,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { buildSofiaSystemPrompt, type SpanishLevel } from "@/lib/sofia-prompt";
 import { logSessionEntry } from "@/lib/supabase";
 
+// Give Vercel's function more room than our own request timeout below, so
+// our graceful error fires before the platform kills the function outright.
+export const maxDuration = 30;
+
+const REQUEST_TIMEOUT_MS = 25_000;
+
 const VALID_LEVELS: SpanishLevel[] = ["Beginner", "Intermediate", "Advanced"];
 
 interface ConversationTurn {
@@ -71,12 +77,15 @@ export async function POST(request: NextRequest) {
   const client = new Anthropic({ apiKey });
 
   try {
-    const response = await client.messages.create({
-      model: "claude-opus-4-8",
-      max_tokens: 1024,
-      system: buildSofiaSystemPrompt(level as SpanishLevel),
-      messages: history,
-    });
+    const response = await client.messages.create(
+      {
+        model: "claude-opus-4-8",
+        max_tokens: 1024,
+        system: buildSofiaSystemPrompt(level as SpanishLevel),
+        messages: history,
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
 
     const reply = response.content
       .filter((block) => block.type === "text")
@@ -102,6 +111,20 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ reply });
   } catch (error) {
+    if (error instanceof Anthropic.APIConnectionTimeoutError) {
+      console.error("Anthropic API request timed out after", REQUEST_TIMEOUT_MS, "ms");
+      return NextResponse.json(
+        { error: "Sofía is taking too long to respond. Please try again." },
+        { status: 504 }
+      );
+    }
+    if (error instanceof Anthropic.APIConnectionError) {
+      console.error("Anthropic API connection error:", error.message);
+      return NextResponse.json(
+        { error: "Couldn't reach Sofía right now. Check your connection and try again." },
+        { status: 502 }
+      );
+    }
     if (error instanceof Anthropic.APIError) {
       // Log the full upstream detail server-side only — it can contain raw
       // JSON/internal detail that shouldn't be shown to end users.
