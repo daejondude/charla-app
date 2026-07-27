@@ -61,6 +61,13 @@ export default function Home() {
   if (!sessionIdRef.current && typeof window !== "undefined") {
     sessionIdRef.current = crypto.randomUUID();
   }
+  // Bumped whenever the current conversation is torn down (pause, "New
+  // topic", "Change level"). Every async step in the record -> transcribe ->
+  // converse -> speak chain captures the token active when it started and
+  // checks it again after each await; a mismatch means the user has since
+  // paused or navigated away, so the chain aborts instead of mutating state
+  // or — critically — re-arming the microphone via the auto-restart loop.
+  const sessionTokenRef = useRef(0);
 
   function appendMessage(message: ChatMessage): ChatMessage[] {
     const updated = [...messagesRef.current, message];
@@ -99,6 +106,7 @@ export default function Home() {
   }
 
   function resetToLevelSelect() {
+    sessionTokenRef.current += 1;
     stopMediaAndSpeech();
     setLevel(null);
     setTopic(null);
@@ -109,6 +117,7 @@ export default function Home() {
   }
 
   function resetToTopicSelect() {
+    sessionTokenRef.current += 1;
     stopMediaAndSpeech();
     setTopic(null);
     messagesRef.current = [];
@@ -117,7 +126,22 @@ export default function Home() {
     setError(null);
   }
 
+  function handleTogglePause() {
+    if (status === "paused") {
+      setStatus("idle");
+      return;
+    }
+    sessionTokenRef.current += 1;
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    stopMediaAndSpeech();
+    setStatus("paused");
+    setError(null);
+  }
+
   async function startConversation(selectedTopic: ConversationTopic) {
+    const token = sessionTokenRef.current;
     setTopic(selectedTopic);
     const kickoff: ChatMessage = {
       role: "user",
@@ -125,13 +149,20 @@ export default function Home() {
       hidden: true,
     };
     const updatedHistory = appendMessage(kickoff);
-    await requestSofiaReply(updatedHistory);
+    await requestSofiaReply(updatedHistory, token);
   }
 
   async function startRecording() {
+    const token = sessionTokenRef.current;
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (sessionTokenRef.current !== token) {
+        // Paused or navigated away while waiting on the permission prompt —
+        // release the mic we just acquired instead of using it.
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       const mimeType = pickSupportedMimeType();
       const recorder = new MediaRecorder(
@@ -147,16 +178,18 @@ export default function Home() {
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+        if (sessionTokenRef.current !== token) return; // paused — discard
         const blob = new Blob(audioChunksRef.current, {
           type: recorder.mimeType || "audio/webm",
         });
-        void handleRecordingComplete(blob);
+        void handleRecordingComplete(blob, token);
       };
 
       mediaRecorderRef.current = recorder;
       recorder.start();
       setStatus("recording");
     } catch (err) {
+      if (sessionTokenRef.current !== token) return;
       console.error("Microphone access failed:", err);
       setError("Couldn't access the microphone. Check your browser permissions.");
       setStatus("idle");
@@ -172,7 +205,7 @@ export default function Home() {
     else if (status === "recording") stopRecording();
   }
 
-  async function handleRecordingComplete(blob: Blob) {
+  async function handleRecordingComplete(blob: Blob, token: number) {
     setStatus("transcribing");
     try {
       const form = new FormData();
@@ -181,6 +214,8 @@ export default function Home() {
       form.append("sessionId", sessionIdRef.current);
       const res = await fetch("/api/transcribe", { method: "POST", body: form });
       const data = await res.json();
+      if (sessionTokenRef.current !== token) return; // paused — ignore result
+
       if (!res.ok) throw new Error(data.error ?? "Transcription failed.");
 
       const text = typeof data.text === "string" ? data.text.trim() : "";
@@ -191,8 +226,9 @@ export default function Home() {
       }
 
       const updatedHistory = appendMessage({ role: "user", content: text });
-      await requestSofiaReply(updatedHistory);
+      await requestSofiaReply(updatedHistory, token);
     } catch (err) {
+      if (sessionTokenRef.current !== token) return;
       console.error("Transcription error:", err);
       setError(
         err instanceof Error ? err.message : "Something went wrong transcribing your audio."
@@ -201,7 +237,7 @@ export default function Home() {
     }
   }
 
-  async function requestSofiaReply(history: ChatMessage[]) {
+  async function requestSofiaReply(history: ChatMessage[], token: number) {
     if (!level) return;
     setStatus("thinking");
     try {
@@ -215,12 +251,15 @@ export default function Home() {
         }),
       });
       const data = await res.json();
+      if (sessionTokenRef.current !== token) return; // paused — ignore result
+
       if (!res.ok) throw new Error(data.error ?? "Sofía couldn't respond.");
 
       const reply: string = data.reply;
       appendMessage({ role: "assistant", content: reply });
-      speak(reply);
+      speak(reply, token);
     } catch (err) {
+      if (sessionTokenRef.current !== token) return;
       console.error("Converse error:", err);
       setError(
         err instanceof Error ? err.message : "Something went wrong reaching Sofía."
@@ -229,7 +268,7 @@ export default function Home() {
     }
   }
 
-  function speak(text: string) {
+  function speak(text: string, token: number) {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       setStatus("idle");
       return;
@@ -243,8 +282,14 @@ export default function Home() {
     } else {
       utterance.lang = "es-ES";
     }
-    utterance.onend = () => void startRecording();
-    utterance.onerror = () => setStatus("idle");
+    utterance.onend = () => {
+      if (sessionTokenRef.current !== token) return; // paused — don't re-arm the mic
+      void startRecording();
+    };
+    utterance.onerror = () => {
+      if (sessionTokenRef.current !== token) return;
+      setStatus("idle");
+    };
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   }
@@ -275,6 +320,7 @@ export default function Home() {
       error={error}
       isRecordButtonDisabled={isRecordButtonDisabled}
       onRecordButtonClick={handleRecordButtonClick}
+      onTogglePause={handleTogglePause}
       onNewTopic={resetToTopicSelect}
       onChangeLevel={resetToLevelSelect}
       messagesEndRef={messagesEndRef}

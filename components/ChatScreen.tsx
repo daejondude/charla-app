@@ -13,6 +13,7 @@ const STATUS_META: Record<Status, { icon: string; label: string }> = {
   transcribing: { icon: "✍️", label: "Transcribing your voice..." },
   thinking: { icon: "💭", label: "Sofía is thinking..." },
   speaking: { icon: "🔊", label: "Sofía is speaking..." },
+  paused: { icon: "⏸️", label: "Paused — mic is off. Tap Resume to continue." },
 };
 
 interface ChatScreenProps {
@@ -23,6 +24,7 @@ interface ChatScreenProps {
   error: string | null;
   isRecordButtonDisabled: boolean;
   onRecordButtonClick: () => void;
+  onTogglePause: () => void;
   onNewTopic: () => void;
   onChangeLevel: () => void;
   messagesEndRef: RefObject<HTMLDivElement | null>;
@@ -36,10 +38,12 @@ export function ChatScreen({
   error,
   isRecordButtonDisabled,
   onRecordButtonClick,
+  onTogglePause,
   onNewTopic,
   onChangeLevel,
   messagesEndRef,
 }: ChatScreenProps) {
+  const isPaused = status === "paused";
   const turnCount = messages.filter((message) => message.role === "user").length;
   const [celebration, setCelebration] = useState<string | null>(null);
 
@@ -77,6 +81,17 @@ export function ChatScreen({
               🔥 {turnCount}
             </span>
           )}
+          <button
+            onClick={onTogglePause}
+            aria-label={isPaused ? "Resume conversation" : "Pause conversation"}
+            className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold transition-colors ${
+              isPaused
+                ? "border-brand bg-brand-light text-brand-dark"
+                : "border-border-soft text-ink-soft hover:border-brand hover:text-brand"
+            }`}
+          >
+            {isPaused ? "▶ Resume" : "⏸ Pause"}
+          </button>
           <button
             onClick={onNewTopic}
             className="text-xs font-medium text-ink-soft underline-offset-2 hover:text-brand hover:underline"

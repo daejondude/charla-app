@@ -1,4 +1,10 @@
-export type Status = "idle" | "recording" | "transcribing" | "thinking" | "speaking";
+export type Status =
+  | "idle"
+  | "recording"
+  | "transcribing"
+  | "thinking"
+  | "speaking"
+  | "paused";
 
 export interface ChatMessage {
   role: "user" | "assistant";
