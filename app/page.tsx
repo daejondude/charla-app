@@ -149,7 +149,7 @@ export default function Home() {
       hidden: true,
     };
     const updatedHistory = appendMessage(kickoff);
-    await requestSofiaReply(updatedHistory, token, true);
+    await requestSofiaReply(updatedHistory, token);
   }
 
   function handleSendText(text: string) {
@@ -170,10 +170,7 @@ export default function Home() {
 
     const token = sessionTokenRef.current;
     const updatedHistory = appendMessage({ role: "user", content: trimmed });
-    // Typed turns don't auto-arm the mic afterward — the user chose to type,
-    // so re-opening the mic on their behalf would be surprising. Voice turns
-    // keep the hands-free loop going (see requestSofiaReply calls below).
-    void requestSofiaReply(updatedHistory, token, false);
+    void requestSofiaReply(updatedHistory, token);
   }
 
   async function startRecording() {
@@ -260,7 +257,7 @@ export default function Home() {
       }
 
       const updatedHistory = appendMessage({ role: "user", content: text });
-      await requestSofiaReply(updatedHistory, token, true);
+      await requestSofiaReply(updatedHistory, token);
     } catch (err) {
       if (sessionTokenRef.current !== token) return;
       console.error("Transcription error:", err);
@@ -279,11 +276,7 @@ export default function Home() {
     }
   }
 
-  async function requestSofiaReply(
-    history: ChatMessage[],
-    token: number,
-    autoListenAfter: boolean
-  ) {
+  async function requestSofiaReply(history: ChatMessage[], token: number) {
     if (!level) return;
     setStatus("thinking");
     try {
@@ -303,7 +296,7 @@ export default function Home() {
 
       const reply: string = data.reply;
       appendMessage({ role: "assistant", content: reply });
-      speak(reply, token, autoListenAfter);
+      speak(reply, token);
     } catch (err) {
       if (sessionTokenRef.current !== token) return;
       console.error("Converse error:", err);
@@ -318,7 +311,7 @@ export default function Home() {
     }
   }
 
-  function speak(text: string, token: number, autoListenAfter: boolean) {
+  function speak(text: string, token: number) {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       setError("Voice playback isn't supported in this browser — showing text only.");
       setStatus("idle");
@@ -334,9 +327,8 @@ export default function Home() {
       utterance.lang = "es-ES";
     }
     utterance.onend = () => {
-      if (sessionTokenRef.current !== token) return; // paused — don't re-arm the mic
-      if (autoListenAfter) void startRecording();
-      else setStatus("idle");
+      if (sessionTokenRef.current !== token) return; // paused — leave the mic off
+      setStatus("idle");
     };
     utterance.onerror = () => {
       if (sessionTokenRef.current !== token) return;

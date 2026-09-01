@@ -83,6 +83,11 @@ export async function POST(request: NextRequest) {
         max_tokens: 1024,
         system: buildSofiaSystemPrompt(level as SpanishLevel),
         messages: history,
+        // Automatic caching of the growing conversation prefix. The system
+        // prompt alone is under the cache minimum, but system + history
+        // crosses it once a conversation runs long enough — no cost on
+        // short conversations, since a too-short prefix just isn't cached.
+        cache_control: { type: "ephemeral" },
       },
       { timeout: REQUEST_TIMEOUT_MS }
     );
