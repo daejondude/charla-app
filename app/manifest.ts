@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Voice-based Spanish conversation practice with an AI tutor.",
     start_url: "/",
     display: "standalone",
-    background_color: "#fff7ee",
-    theme_color: "#fff7ee",
+    background_color: "#fff5f2",
+    theme_color: "#fff5f2",
     icons: [
       {
         src: "/icon-192.png",

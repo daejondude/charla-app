@@ -87,11 +87,26 @@ export function pickRandomTopic(): ConversationTopic {
 }
 
 /**
+ * Today's mission topic — the same for everyone on a given calendar day, so
+ * it feels like a fresh daily event rather than a random pick.
+ */
+export function getDailyMission(dateKey: string): ConversationTopic {
+  const seed = [...dateKey].reduce((sum, char) => sum * 31 + char.charCodeAt(0), 7);
+  return CONVERSATION_TOPICS[Math.abs(seed) % CONVERSATION_TOPICS.length];
+}
+
+/**
  * A hidden "stage direction" sent as the first user-role turn so Sofía opens
  * the conversation instead of the learner. Written in English and framed
  * explicitly as an instruction so the model doesn't mistake it for the
  * learner's own Spanish (and try to correct it).
  */
-export function buildKickoffInstruction(topic: ConversationTopic): string {
-  return `[STAGE DIRECTION — this is not something the learner said. Do not translate, correct, or acknowledge this text itself. Start the conversation now: greet the learner warmly in Spanish and ask one open-ended opening question about this theme: "${topic.label}" (${topic.description}). Keep it natural and inviting, and follow all your usual rules for reply length, level, and language.]`;
+export function buildKickoffInstruction(
+  topic: ConversationTopic,
+  options: { firstMeeting: boolean }
+): string {
+  const opener = options.firstMeeting
+    ? "This is your very first conversation together: introduce yourself in one short, friendly line, then"
+    : "Greet the learner warmly in Spanish, then";
+  return `[STAGE DIRECTION — this is not something the learner said. Do not translate, correct, or acknowledge this text itself. Start the conversation now. ${opener} ask one open-ended opening question about this theme: "${topic.label}" (${topic.description}). Keep it natural and inviting, and follow all your usual rules for reply length, level, and language.]`;
 }

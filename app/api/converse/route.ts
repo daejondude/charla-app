@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSofiaSystemPrompt, type SpanishLevel } from "@/lib/sofia-prompt";
 import { logSessionEntry } from "@/lib/supabase";
+import { getAnthropicApiKey } from "@/lib/anthropic-key";
 
 // Give Vercel's function more room than our own request timeout below, so
 // our graceful error fires before the platform kills the function outright.
@@ -66,10 +67,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = getAnthropicApiKey();
   if (!apiKey) {
     return NextResponse.json(
-      { error: "Server is missing ANTHROPIC_API_KEY." },
+      { error: "Server is missing CHARLA_API_KEY." },
       { status: 500 }
     );
   }

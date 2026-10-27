@@ -1,22 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Baloo_2 } from "next/font/google";
+import { Figtree, Shrikhand } from "next/font/google";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const figtree = Figtree({
+  variable: "--font-body",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const baloo = Baloo_2({
+// Sign-painter display face — reserved for the wordmark, big numbers, and
+// headlines so it stays special.
+const shrikhand = Shrikhand({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
+  weight: "400",
 });
 
 export const metadata: Metadata = {
@@ -38,8 +35,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fff7ee" },
-    { media: "(prefers-color-scheme: dark)", color: "#1c1310" },
+    { media: "(prefers-color-scheme: light)", color: "#fff5f2" },
+    { media: "(prefers-color-scheme: dark)", color: "#150c2b" },
   ],
   colorScheme: "light dark",
 };
@@ -52,7 +49,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${baloo.variable} h-full antialiased`}
+      className={`${figtree.variable} ${shrikhand.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}
