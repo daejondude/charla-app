@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SpanishLevel } from "@/lib/sofia-prompt";
 import {
   buildKickoffInstruction,
+  findTopic,
   getDailyMission,
   pickRandomTopic,
   type ConversationTopic,
@@ -11,6 +12,7 @@ import {
 import type { ChatMessage, Status } from "@/lib/chat-types";
 import {
   awardTurn,
+  completeLesson,
   completeSession,
   dateKey,
   loadProgress,
@@ -25,7 +27,23 @@ import {
   summaryHeadline,
   type SofiaLine,
 } from "@/lib/sofia-lines";
+import { SKILLS, type SkillId } from "@/lib/skills";
+import { LESSONS } from "@/lib/lessons";
+import {
+  applyLessonResult,
+  applyObservations,
+  clearFocus,
+  loadSkillProfile,
+  saveSkillProfile,
+  suggestFromProfile,
+  suggestFromSession,
+  type LessonSuggestion,
+  type SkillObservation,
+  type SkillProfile,
+} from "@/lib/skill-profile";
 import { HomeScreen } from "@/components/HomeScreen";
+import { LibraryScreen } from "@/components/LibraryScreen";
+import { LessonScreen, type LessonOutcome } from "@/components/LessonScreen";
 import { LevelSelectScreen } from "@/components/LevelSelectScreen";
 import { TopicSelectScreen } from "@/components/TopicSelectScreen";
 import { ChatScreen, type RewardFlash } from "@/components/ChatScreen";
@@ -39,7 +57,7 @@ const RECORDER_MIME_CANDIDATES = [
 
 const REWARD_FLASH_MS = 2200;
 
-type Screen = "home" | "level" | "topics" | "chat" | "summary";
+type Screen = "home" | "level" | "topics" | "chat" | "summary" | "library" | "lesson";
 
 /** Which reward to announce when one turn earns several — biggest news wins. */
 const REWARD_PRIORITY: RewardEvent["kind"][] = ["goal", "freeze", "streak", "lucky", "long"];
@@ -77,7 +95,11 @@ export function CharlaApp() {
   const [initial] = useState(() => {
     const { progress: loaded, notice } = loadProgress();
     saveProgress(loaded);
-    return { progress: loaded, greeting: homeGreeting(loaded, notice, new Date().getHours()) };
+    return {
+      progress: loaded,
+      greeting: homeGreeting(loaded, notice, new Date().getHours()),
+      skills: loadSkillProfile(),
+    };
   });
   const [screen, setScreen] = useState<Screen>("home");
   const [progress, setProgress] = useState<Progress>(initial.progress);
@@ -90,6 +112,13 @@ export function CharlaApp() {
   const [reward, setReward] = useState<RewardFlash | null>(null);
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [summaryNote, setSummaryNote] = useState<string | null>(null);
+  const [skillProfile, setSkillProfile] = useState<SkillProfile>(initial.skills);
+  const [lessonSkill, setLessonSkill] = useState<SkillId | null>(null);
+  /** Sofía's post-conversation lesson nudge, once the diagnosis comes back. */
+  const [sessionSuggestion, setSessionSuggestion] = useState<LessonSuggestion | null>(null);
+  // The skill the current conversation practices, captured when it starts so
+  // every reply stays focused even after the profile's focus clears.
+  const [conversationFocus, setConversationFocus] = useState<SkillId | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -104,6 +133,8 @@ export function CharlaApp() {
   // those async chains, not whatever the closure captured.
   const progressRef = useRef<Progress>(initial.progress);
   const sessionTallyRef = useRef<SessionTally>(EMPTY_TALLY);
+  const skillProfileRef = useRef<SkillProfile>(initial.skills);
+  const conversationFocusRef = useRef<SkillId | null>(null);
   // The topic picked before a level existed — onboarding starts it right
   // after the learner chooses a level.
   const pendingTopicRef = useRef<ConversationTopic | null>(null);
@@ -126,6 +157,12 @@ export function CharlaApp() {
     progressRef.current = next;
     setProgress(next);
     saveProgress(next);
+  }
+
+  function commitSkills(next: SkillProfile) {
+    skillProfileRef.current = next;
+    setSkillProfile(next);
+    saveSkillProfile(next);
   }
 
   function refreshGreeting(current: Progress) {
@@ -224,6 +261,9 @@ export function CharlaApp() {
     }
 
     teardownConversation();
+    const focus = skillProfileRef.current.focusSkill;
+    conversationFocusRef.current = focus;
+    setConversationFocus(focus);
     sessionTallyRef.current = { ...EMPTY_TALLY };
     setSessionXp(0);
     setTopic(selectedTopic);
@@ -234,6 +274,7 @@ export function CharlaApp() {
       role: "user",
       content: buildKickoffInstruction(selectedTopic, {
         firstMeeting: current.sessionsCompleted === 0 && current.xp === 0,
+        focusLabel: focus ? SKILLS[focus].label : null,
       }),
       hidden: true,
     };
@@ -281,6 +322,8 @@ export function CharlaApp() {
       wasDailyMission: topic.id === getDailyMission(dateKey()).id,
     });
     commitProgress(next);
+    // The focused practice happened — the next conversation is a normal one.
+    if (conversationFocusRef.current) commitSkills(clearFocus(skillProfileRef.current));
     setSummary({
       ...tally,
       bonuses,
@@ -288,8 +331,68 @@ export function CharlaApp() {
       headline: summaryHeadline(tally.turns, isFirstSession),
     });
     setSummaryNote(null);
+    setSessionSuggestion(null);
     setScreen("summary");
     void loadSummaryNote(history, next.level, tally.turns);
+    void loadDiagnosis(history, next.level);
+  }
+
+  /**
+   * Has Sofía analyze the conversation for the tracked grammar skills, folds
+   * the result into the weakness profile, and surfaces at most one lesson
+   * suggestion. Purely additive: if it fails, the summary just has no nudge.
+   */
+  async function loadDiagnosis(
+    history: { role: ChatMessage["role"]; content: string }[],
+    level: SpanishLevel | null
+  ) {
+    const token = sessionTokenRef.current;
+    try {
+      const res = await fetch("/api/diagnose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ history, level }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { observations?: SkillObservation[] };
+      const observations = Array.isArray(data.observations) ? data.observations : [];
+      // The profile update applies even if the learner has moved on; only the
+      // on-screen nudge is tied to this summary.
+      const updated = applyObservations(skillProfileRef.current, observations);
+      commitSkills(updated);
+      if (sessionTokenRef.current !== token) return;
+      setSessionSuggestion(suggestFromSession(updated, observations));
+    } catch (err) {
+      console.error("Diagnosis error:", err);
+    }
+  }
+
+  function openLesson(skill: SkillId) {
+    teardownConversation();
+    setLessonSkill(skill);
+    setScreen("lesson");
+  }
+
+  function handleLessonComplete(skill: SkillId, correct: number, total: number): LessonOutcome {
+    const { progress: next, gained, streakExtended } = completeLesson(progressRef.current, { correct });
+    commitProgress(next);
+    commitSkills(applyLessonResult(skillProfileRef.current, skill, correct / total));
+    return { xp: gained, streakExtended };
+  }
+
+  /** Reads a Spanish phrase aloud in a lesson — no conversation state involved. */
+  function speakPhrase(text: string) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = pickSpanishVoice();
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    } else {
+      utterance.lang = "es-ES";
+    }
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
   }
 
   async function loadSummaryNote(
@@ -451,6 +554,7 @@ export function CharlaApp() {
           history: history.map(({ role, content }) => ({ role, content })),
           level,
           sessionId: sessionIdRef.current,
+          focusSkill: conversationFocusRef.current,
         }),
       });
       const data = await res.json();
@@ -503,6 +607,37 @@ export function CharlaApp() {
   }
 
   const mission = getDailyMission(progress.todayDate);
+  const profileSuggestion = suggestFromProfile(skillProfile);
+
+  if (screen === "library") {
+    return (
+      <LibraryScreen
+        profile={skillProfile}
+        suggestion={profileSuggestion}
+        onOpenLesson={openLesson}
+        onBack={goHome}
+      />
+    );
+  }
+
+  if (screen === "lesson" && lessonSkill) {
+    const skill = lessonSkill;
+    return (
+      <LessonScreen
+        key={skill}
+        lesson={LESSONS[skill]}
+        level={progress.level ?? "Beginner"}
+        example={skillProfile.skills[skill].lastExample}
+        onSpeak={speakPhrase}
+        onComplete={(correct, total) => handleLessonComplete(skill, correct, total)}
+        onPractice={() => void startConversation(findTopic(SKILLS[skill].practiceTopicId))}
+        onExit={() => {
+          if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+          setScreen("library");
+        }}
+      />
+    );
+  }
 
   if (screen === "level") {
     return (
@@ -533,6 +668,8 @@ export function CharlaApp() {
         summary={summary}
         progress={progress}
         note={summaryNote}
+        suggestion={sessionSuggestion}
+        onStartLesson={openLesson}
         onKeepTalking={() => {
           let next = pickRandomTopic();
           while (topic && next.id === topic.id) next = pickRandomTopic();
@@ -556,6 +693,7 @@ export function CharlaApp() {
         todayTurns={progress.todayTurns}
         goalTurns={progress.goalTurns}
         reward={reward}
+        focusLabel={conversationFocus ? SKILLS[conversationFocus].label : null}
         isRecordButtonDisabled={isRecordButtonDisabled}
         onRecordButtonClick={handleRecordButtonClick}
         onSendText={handleSendText}
@@ -573,6 +711,10 @@ export function CharlaApp() {
       mission={mission}
       onStartMission={() => void startConversation(mission)}
       onPickTopic={() => setScreen("topics")}
+      suggestion={profileSuggestion}
+      focusLabel={skillProfile.focusSkill ? SKILLS[skillProfile.focusSkill].label : null}
+      onOpenLibrary={() => setScreen("library")}
+      onStartLesson={openLesson}
       onChangeLevel={() => setScreen("level")}
     />
   );

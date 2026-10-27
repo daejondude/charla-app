@@ -81,6 +81,10 @@ export const CONVERSATION_TOPICS: ConversationTopic[] = [
   },
 ];
 
+export function findTopic(id: string): ConversationTopic {
+  return CONVERSATION_TOPICS.find((topic) => topic.id === id) ?? CONVERSATION_TOPICS[0];
+}
+
 export function pickRandomTopic(): ConversationTopic {
   const index = Math.floor(Math.random() * CONVERSATION_TOPICS.length);
   return CONVERSATION_TOPICS[index];
@@ -103,10 +107,15 @@ export function getDailyMission(dateKey: string): ConversationTopic {
  */
 export function buildKickoffInstruction(
   topic: ConversationTopic,
-  options: { firstMeeting: boolean }
+  options: { firstMeeting: boolean; focusLabel?: string | null }
 ): string {
   const opener = options.firstMeeting
     ? "This is your very first conversation together: introduce yourself in one short, friendly line, then"
-    : "Greet the learner warmly in Spanish, then";
-  return `[STAGE DIRECTION — this is not something the learner said. Do not translate, correct, or acknowledge this text itself. Start the conversation now. ${opener} ask one open-ended opening question about this theme: "${topic.label}" (${topic.description}). Keep it natural and inviting, and follow all your usual rules for reply length, level, and language.]`;
+    : options.focusLabel
+      ? `The learner just finished a lesson on ${options.focusLabel.toLowerCase()}. Greet them warmly in Spanish with one short line of encouragement about it, then`
+      : "Greet the learner warmly in Spanish, then";
+  const question = options.focusLabel
+    ? `ask one open-ended opening question about this theme that naturally calls for ${options.focusLabel.toLowerCase()}`
+    : "ask one open-ended opening question about this theme";
+  return `[STAGE DIRECTION — this is not something the learner said. Do not translate, correct, or acknowledge this text itself. Start the conversation now. ${opener} ${question}: "${topic.label}" (${topic.description}). Keep it natural and inviting, and follow all your usual rules for reply length, level, and language.]`;
 }

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { recentWeek, type Progress, type SessionBonus } from "@/lib/progress";
+import { suggestionLine, type LessonSuggestion } from "@/lib/skill-profile";
+import { SKILLS, type SkillId } from "@/lib/skills";
 import { SofiaAvatar } from "./SofiaAvatar";
 import { ArchMeter, FlameIcon, WeekStrip } from "./ProgressBits";
 
@@ -20,6 +22,9 @@ interface SummaryScreenProps {
   progress: Progress;
   /** null while Sofía's note is still being written. */
   note: string | null;
+  /** Sofía's lesson nudge — arrives a moment after the screen, or never. */
+  suggestion: LessonSuggestion | null;
+  onStartLesson: (skill: SkillId) => void;
   onKeepTalking: () => void;
   onDone: () => void;
 }
@@ -64,7 +69,15 @@ function useCountUp(target: number, durationMs = 1100): number {
   return reducedMotion ? target : value;
 }
 
-export function SummaryScreen({ summary, progress, note, onKeepTalking, onDone }: SummaryScreenProps) {
+export function SummaryScreen({
+  summary,
+  progress,
+  note,
+  suggestion,
+  onStartLesson,
+  onKeepTalking,
+  onDone,
+}: SummaryScreenProps) {
   const totalXp = summary.turnXp + summary.bonuses.reduce((sum, bonus) => sum + bonus.xp, 0);
   const shownXp = useCountUp(totalXp);
   const celebrate = summary.isFirstSession || summary.goalHit || summary.streakExtended;
@@ -144,6 +157,33 @@ export function SummaryScreen({ summary, progress, note, onKeepTalking, onDone }
           )}
         </div>
       </section>
+
+      {suggestion && (
+        <section
+          className="mt-4 rounded-2xl border-2 border-dashed border-accent/50 bg-card px-4 py-4 animate-rise-in"
+          aria-label="Suggested lesson"
+        >
+          <p className="text-xs font-bold uppercase tracking-wider text-accent">
+            {SKILLS[suggestion.skill].emoji} Quick lesson · ~{SKILLS[suggestion.skill].minutes} min
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-snug text-foreground">
+            {suggestionLine(suggestion)}
+          </p>
+          {suggestion.example && (
+            <p lang="es" className="mt-2 text-sm text-ink-soft">
+              <span className="line-through decoration-brand/60">{suggestion.example.wrong}</span>
+              {" → "}
+              <span className="font-bold text-accent">{suggestion.example.right}</span>
+            </p>
+          )}
+          <button
+            onClick={() => onStartLesson(suggestion.skill)}
+            className="press mt-3 h-11 w-full rounded-xl bg-accent text-sm font-extrabold text-white [--press-shadow:#08715a]"
+          >
+            Start the lesson
+          </button>
+        </section>
+      )}
 
       <div className="mt-auto flex flex-col gap-3 pt-8">
         <button

@@ -1,6 +1,8 @@
 import type { ConversationTopic } from "@/lib/conversation-topics";
 import { recentWeek, type Progress } from "@/lib/progress";
 import type { SofiaLine } from "@/lib/sofia-lines";
+import { suggestionLine, type LessonSuggestion } from "@/lib/skill-profile";
+import { SKILLS, type SkillId } from "@/lib/skills";
 import { SofiaAvatar } from "./SofiaAvatar";
 import { ArchMeter, StatChips, WeekStrip } from "./ProgressBits";
 
@@ -11,6 +13,12 @@ interface HomeScreenProps {
   onStartMission: () => void;
   onPickTopic: () => void;
   onChangeLevel: () => void;
+  /** The weakest skill worth a lesson, if the profile has found one. */
+  suggestion: LessonSuggestion | null;
+  /** A just-studied skill the next conversation will practice. */
+  focusLabel: string | null;
+  onOpenLibrary: () => void;
+  onStartLesson: (skill: SkillId) => void;
 }
 
 export function HomeScreen({
@@ -20,6 +28,10 @@ export function HomeScreen({
   onStartMission,
   onPickTopic,
   onChangeLevel,
+  suggestion,
+  focusLabel,
+  onOpenLibrary,
+  onStartLesson,
 }: HomeScreenProps) {
   const litToday = progress.lastActiveDate === progress.todayDate;
   const goalDone = progress.todayTurns >= progress.goalTurns;
@@ -92,6 +104,45 @@ export function HomeScreen({
             ? "A new mission arrives tomorrow."
             : "3+ turns earns a +20 XP mission bonus."}
         </p>
+      </section>
+
+      <section className="mt-4 animate-rise-in [animation-delay:240ms]" aria-label="Lessons">
+        {suggestion ? (
+          <button
+            onClick={() => onStartLesson(suggestion.skill)}
+            className="flex w-full items-center gap-3 rounded-2xl bg-card px-5 py-4 text-left shadow-sm transition-colors hover:bg-brand-light"
+          >
+            <span className="text-2xl" aria-hidden="true">{SKILLS[suggestion.skill].emoji}</span>
+            <span className="flex-1">
+              <span className="block text-xs font-bold uppercase tracking-wider text-accent">
+                Sofía suggests a lesson
+              </span>
+              <span className="block text-sm font-semibold leading-snug text-foreground">
+                {suggestionLine(suggestion)}
+              </span>
+            </span>
+            <span aria-hidden="true" className="text-ink-soft">→</span>
+          </button>
+        ) : (
+          <button
+            onClick={onOpenLibrary}
+            className="flex w-full items-center gap-3 rounded-2xl bg-card px-5 py-3 text-left shadow-sm transition-colors hover:bg-brand-light"
+          >
+            <span className="text-xl" aria-hidden="true">📚</span>
+            <span className="flex-1 text-sm font-bold text-foreground">Lessons</span>
+            <span className="text-xs font-semibold text-ink-soft">
+              {focusLabel ? `Next chat practices ${focusLabel.toLowerCase()}` : "Past tense, por/para…"}
+            </span>
+          </button>
+        )}
+        {suggestion && (
+          <button
+            onClick={onOpenLibrary}
+            className="mt-2 w-full text-center text-xs font-semibold text-ink-soft hover:text-brand"
+          >
+            See all lessons
+          </button>
+        )}
       </section>
 
       <div className="mt-auto pt-6">

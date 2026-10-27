@@ -34,6 +34,8 @@ interface ChatScreenProps {
   todayTurns: number;
   goalTurns: number;
   reward: RewardFlash | null;
+  /** The skill this conversation practices right after a lesson, if any. */
+  focusLabel: string | null;
   isRecordButtonDisabled: boolean;
   onRecordButtonClick: () => void;
   onSendText: (text: string) => void;
@@ -52,6 +54,7 @@ export function ChatScreen({
   todayTurns,
   goalTurns,
   reward,
+  focusLabel,
   isRecordButtonDisabled,
   onRecordButtonClick,
   onSendText,
@@ -141,6 +144,11 @@ export function ChatScreen({
             style={{ width: `${goalPercent}%` }}
           />
         </div>
+        {focusLabel && (
+          <p className="mt-2 text-center text-xs font-bold text-accent">
+            🎯 Practicing {focusLabel.toLowerCase()} — Sofía will steer toward it
+          </p>
+        )}
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4" aria-live="polite" aria-atomic="false">

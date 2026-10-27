@@ -22,6 +22,8 @@ const XP_GOAL_COMPLETE = 30;
 const XP_SESSION_COMPLETE = 20;
 const XP_MISSION_COMPLETE = 20;
 const MIN_TURNS_FOR_SESSION_BONUS = 3;
+const XP_LESSON_DRILL = 5;
+const XP_LESSON_COMPLETE = 25;
 
 export interface Progress {
   xp: number;
@@ -157,6 +159,31 @@ export function saveProgress(progress: Progress): void {
 }
 
 /**
+ * Counts today toward the streak if it doesn't already. Any real practice —
+ * a conversation turn or a finished lesson — keeps the flame lit.
+ */
+function markActive(progress: Progress, today: string, events: RewardEvent[]): Progress {
+  if (progress.lastActiveDate === today) return progress;
+  const continues =
+    progress.lastActiveDate !== null && daysBetween(progress.lastActiveDate, today) === 1;
+  const streak = continues ? progress.streak + 1 : 1;
+  let next: Progress = {
+    ...progress,
+    streak,
+    longestStreak: Math.max(progress.longestStreak, streak),
+    lastActiveDate: today,
+    activeDates: keepRecent([...progress.activeDates, today]),
+  };
+  events.push({ kind: "streak", xp: 0 });
+
+  if (streak % 7 === 0 && next.freezes < MAX_FREEZES) {
+    next = { ...next, freezes: next.freezes + 1 };
+    events.push({ kind: "freeze", xp: 0 });
+  }
+  return next;
+}
+
+/**
  * Awards XP for one completed learner turn. Voice is worth more than typing
  * to keep people speaking; a small random chance doubles the base award so
  * rewards stay variable rather than perfectly predictable.
@@ -187,24 +214,7 @@ export function awardTurn(
     todayTurns: progress.todayDate === today ? progress.todayTurns + 1 : 1,
   };
 
-  if (next.lastActiveDate !== today) {
-    const continues =
-      next.lastActiveDate !== null && daysBetween(next.lastActiveDate, today) === 1;
-    const streak = continues ? next.streak + 1 : 1;
-    next = {
-      ...next,
-      streak,
-      longestStreak: Math.max(next.longestStreak, streak),
-      lastActiveDate: today,
-      activeDates: keepRecent([...next.activeDates, today]),
-    };
-    events.push({ kind: "streak", xp: 0 });
-
-    if (streak % 7 === 0 && next.freezes < MAX_FREEZES) {
-      next = { ...next, freezes: next.freezes + 1 };
-      events.push({ kind: "freeze", xp: 0 });
-    }
-  }
+  next = markActive(next, today, events);
 
   if (next.todayTurns === next.goalTurns) {
     gained += XP_GOAL_COMPLETE;
@@ -249,6 +259,28 @@ export function completeSession(
       missionDoneDate,
     },
     bonuses,
+  };
+}
+
+/**
+ * Closes out a lesson: XP per correct drill plus a completion bonus, and the
+ * day counts toward the streak. Lessons don't add conversation turns — the
+ * daily goal stays about talking.
+ */
+export function completeLesson(
+  progress: Progress,
+  lesson: { correct: number },
+  today: string = dateKey()
+): { progress: Progress; gained: number; streakExtended: boolean } {
+  const gained = lesson.correct * XP_LESSON_DRILL + XP_LESSON_COMPLETE;
+  const events: RewardEvent[] = [];
+  const rolled: Progress =
+    progress.todayDate === today ? progress : { ...progress, todayDate: today, todayTurns: 0, todayXp: 0 };
+  const next = markActive(rolled, today, events);
+  return {
+    progress: { ...next, xp: next.xp + gained, todayXp: next.todayXp + gained },
+    gained,
+    streakExtended: events.some((event) => event.kind === "streak"),
   };
 }
 

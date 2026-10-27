@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import type { SpanishLevel } from "@/lib/sofia-prompt";
 import { getAnthropicApiKey } from "@/lib/anthropic-key";
+import { NO_THINKING, SOFIA_MODEL } from "@/lib/models";
 
 export const maxDuration = 30;
 
@@ -27,10 +28,10 @@ function isConversationTurn(value: unknown): value is ConversationTurn {
 const FEEDBACK_SYSTEM_PROMPT = `You are Sofía, a warm, playful Spanish conversation partner from Guadalajara who lives in Madrid. You just finished a practice conversation with a learner, and you're leaving them a short personal note.
 
 Write the note in English, 2-3 sentences, under 60 words total:
-- Name one specific thing they did well, quoting a short Spanish phrase they actually said.
-- Give one gentle, concrete tip for next time, with the correct Spanish form if it's about a mistake.
+- Name one specific thing they did well, quoting a short Spanish phrase they actually said that was correct. Never praise or quote a sentence that contains a mistake.
+- Give one gentle, concrete tip for next time, with the correct Spanish form if it's about a mistake. Missing accents and punctuation come from speech-to-text, not the learner — never mention them.
 - End with a short Spanish sign-off (for example "¡Hasta mañana!").
-Sound like a friend, not a report card: warm, specific, a little playful. No headings, no lists, no quotation of this instruction.`;
+Start straight away with the praise — no preamble, and don't think out loud. Use gender-neutral words for the learner. Sound like a friend, not a report card: warm, specific, a little playful. No headings, no lists, no quotation of this instruction.`;
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -71,7 +72,8 @@ export async function POST(request: NextRequest) {
   try {
     const response = await client.messages.create(
       {
-        model: "claude-opus-4-8",
+        model: SOFIA_MODEL,
+        thinking: NO_THINKING,
         max_tokens: 300,
         system: FEEDBACK_SYSTEM_PROMPT,
         messages: [

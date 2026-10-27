@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { buildSofiaSystemPrompt, type SpanishLevel } from "@/lib/sofia-prompt";
 import { logSessionEntry } from "@/lib/supabase";
 import { getAnthropicApiKey } from "@/lib/anthropic-key";
+import { NO_THINKING, SOFIA_MODEL } from "@/lib/models";
+import { isSkillId } from "@/lib/skills";
 
 // Give Vercel's function more room than our own request timeout below, so
 // our graceful error fires before the platform kills the function outright.
@@ -37,10 +39,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { history, level, sessionId } = (body ?? {}) as {
+  const { history, level, sessionId, focusSkill } = (body ?? {}) as {
     history?: unknown;
     level?: unknown;
     sessionId?: unknown;
+    focusSkill?: unknown;
   };
 
   if (!Array.isArray(history) || !history.every(isConversationTurn)) {
@@ -80,9 +83,13 @@ export async function POST(request: NextRequest) {
   try {
     const response = await client.messages.create(
       {
-        model: "claude-opus-4-8",
+        model: SOFIA_MODEL,
+        thinking: NO_THINKING,
         max_tokens: 1024,
-        system: buildSofiaSystemPrompt(level as SpanishLevel),
+        system: buildSofiaSystemPrompt(
+          level as SpanishLevel,
+          isSkillId(focusSkill) ? focusSkill : null
+        ),
         messages: history,
         // Automatic caching of the growing conversation prefix. The system
         // prompt alone is under the cache minimum, but system + history
